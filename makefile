@@ -1,31 +1,33 @@
-CC=g++
-CFLAGS=
+OS:=$(shell uname -s)
+
+ifeq ($(OS), Darwin)
+	CC := clang
+	CFLAGS := -g -pthread -lstdc++ -O3 -std=c++2a
+endif
+
+ifeq ($(OS), Linux)
+	CC := c++
+    CFLAGS := -g -pthread -O3 -std=c++2a
+endif
 
 vpath %.cpp share
 vpath %.h include
 
-all: main.o taslock.o zutils.o ttaslock.o ticketlock.o \
-      mcslock.o
-	$(CC) -o main -g -pthread -O3 -std=c++2a $^
+APPNAME := main
 
-main.o: main.cpp zutils.h taslock.h ttaslock.h ticketlock.h
-	$(CC) -g -pthread -O3 -std=c++2a -c $< -o $@
+CFILES := main.cpp senserelbarrier.cpp  zutils.cpp taslock.cpp ttaslock.cpp ticketlock.cpp mcslock.cpp 
+OBJFILES := $(CFILES:.cpp=.o)
 
-zutils.o: zutils.cpp zutils.h
-	$(CC) -g -std=c++2a -c $< -o $@
-  
-taslock.o: taslock.cpp taslock.h
-	$(CC) -g -std=c++2a -c $< -o $@
+all: $(APPNAME)
 
-ttaslock.o: ttaslock.cpp ttaslock.h
-	$(CC) -g -std=c++2a -c $< -o $@
+$(APPNAME): $(OBJFILES) 
+	$(CC) -o $(APPNAME) $(CFLAGS) $^ 
+	@echo "LINK => $@"
 
-ticketlock.o: ticketlock.cpp ticketlock.h
-	$(CC) -g -std=c++2a -c $< -o $@
 
-mcslock.o: mcslock.cpp mcslock.h
-	$(CC) -g -std=c++2a -c $< -o $@
-
+%.o: %.cpp
+	$(CC) -c $< -o $@  $(CFLAGS)
+	
 .PHONY: clean
 clean:
 	rm *.o
