@@ -8,6 +8,7 @@
 #include "./include/pthreadbarrier.h" // wrapper for c++ barrier class
 #include "./include/senserelbarrier.h"
 
+#include "./include/zutils.h"
 #include "./include/zlock.h"
 #include "./include/pthreadlock.h"   // Wrapper for c++ mutex class
 #include "./include/taslock.h"
@@ -15,6 +16,8 @@
 #include "./include/ticketlock.h"
 #include "./include/ticketlock.h"
 #include "./include/mcslock.h"
+#include "./include/petersonlock.h"
+#include "./include/petersonrellock.h"
 
 using namespace std;
 
@@ -25,7 +28,11 @@ enum {
     lt_tas,
     lt_ttas,
     lt_ticket,
-    lt_mcs
+    lt_mcs,
+    lt_peterson,
+    lt_tasrel,
+    lt_ttasrel,
+    lt_petersonrel
 };
 
 enum {
@@ -36,7 +43,8 @@ enum {
 
 // boiler plate for testing 
 vector<thread*> threads;
-struct timespec time_start, time_end;
+struct timespec ts_start, ts_end;
+barrier<> *bar_timer;
 
 // Test subject
 vector<int> SharedData;  
@@ -47,12 +55,14 @@ const char *name = "Zach Moolman";
 size_t nthreads = 5;     // default threads including the main thread?? 
 int locktype = lt_none;
 int barriertype = bt_none;
-int niterations = 100;
+int niterations = 1000;
 
 // Lock & barriers to test
 ZBarrier *bar;
 ZLock *lck; 
 MCSLock *mcs;
+PetersonLock *peterson;
+PetersonrelLock *petersonrel;
 
 /* 
  * Argument passing plumming code.
@@ -116,6 +126,14 @@ void handle_args(int argc, char** argv){
                    locktype = lt_ticket;
                 else if (strcmp(optarg, "mcs") == 0)
                    locktype = lt_mcs;
+                else if (strcmp(optarg, "peterson") == 0)
+                    locktype = lt_peterson;
+                else if (strcmp(optarg, "tasrel") == 0)
+                   locktype = lt_tasrel;
+                else if (strcmp(optarg, "ttasrel") == 0)
+                   locktype = lt_tasrel;
+                else if (strcmp(optarg, "petersonrel") == 0)
+                    locktype = lt_petersonrel;
                 else  {
                     printf("ERROR: lock not recognised `%s'\n", optarg);
                     abort();
@@ -153,7 +171,7 @@ void thread_func(int tid) {
 	bar->wait();
 	if (tid == 0) {
         printf("Thread 4 is getting time");
-		clock_gettime(CLOCK_MONOTONIC, &time_start);
+		clock_gettime(CLOCK_MONOTONIC, &ts_start);
     }
     bar->wait();
 
@@ -164,18 +182,16 @@ void thread_func(int tid) {
         lck->lock();
         {
             SharedData[0]++;
-            // cout << "id " << tid << " value " << SharedData[0] << endl;
         }
         lck->unlock();
         cnt++;
-        // this_thread::sleep_for(chrono::microseconds(5));
     }
 
     printf("Thread %d is done", tid);
     //Sync Thread for
     bar->wait();
 	if (tid == 0) {
-		clock_gettime(CLOCK_MONOTONIC, &time_end);
+		clock_gettime(CLOCK_MONOTONIC, &ts_end);
     }
 }
 
@@ -184,7 +200,7 @@ void thread_func_mcs(int tid) {
     //Sync Threads
 	bar->wait();
 	if (tid == 1) {
-		clock_gettime(CLOCK_MONOTONIC, &time_start);
+		clock_gettime(CLOCK_MONOTONIC, &ts_start);
         printf("Thread 1 is getting time");
     }
     bar->wait();
@@ -208,25 +224,46 @@ void thread_func_mcs(int tid) {
     printf("Thread %d is done", tid);
     bar->wait();
 	if (tid == 1) {
-		clock_gettime(CLOCK_MONOTONIC, &time_end);
+		clock_gettime(CLOCK_MONOTONIC, &ts_end);
     }
 }
 
 
-void thread_func_senserel(int tid) {
+void thread_func_peterson(int tid) {
 
     //Sync Threads
-	bar->wait();
+	bar_timer->arrive_and_wait();
 	if (tid == 1) {
-		clock_gettime(CLOCK_MONOTONIC, &time_start);
-        printf("Thread %d getting time_start\n", tid);
+		clock_gettime(CLOCK_MONOTONIC, &ts_start);
+        printf("Thread %d getting time_start %d.%d\n", tid,ts_start.tv_sec, ts_start.tv_nsec);
+    }
+
+
+    for ( int cnt = 0; cnt < niterations; cnt++){
+        if (locktype == lt_peterson)
+            peterson->lock(tid);
+        else 
+            petersonrel->lock(tid);
+        
+        {
+            SharedData[0]++;
+        }
+        
+        if (locktype == lt_peterson)
+            peterson->unlock(tid);
+        else 
+            petersonrel->unlock(tid);
     }
     
-    bar->wait();
-	if (tid == 4) {
-		clock_gettime(CLOCK_MONOTONIC, &time_end);
-        printf("Thread %d getting time_end\n", tid);
+    bar_timer->arrive_and_wait();
+    if (tid == 1) {
+		clock_gettime(CLOCK_MONOTONIC, &ts_end);
+        if ( ts_start.tv_sec == ts_end.tv_sec && ts_start.tv_nsec > ts_end.tv_nsec) {
+            ts_end.tv_sec += 1;
+        }
+        printf("Thread %d getting time_end %d.%d\n", tid,ts_end.tv_sec, ts_end.tv_nsec);
     }
+
 }
 
 
@@ -241,64 +278,100 @@ int main(int argc, char** argv) {
     unsigned long long elapsed_ns;
 	double elapsed_s;
 
-    switch ( barriertype ) {
-    case bt_senserel:
-        bar = new SenserelBarrier(nthreads);
-        break;
-    default:
-        bar = new PThreadBarrier(nthreads);
-        break;
-    }
 
     switch (locktype) {
         case lt_pthread:
             lck = new PThreadLock;
             break;
         case lt_tas:
-            lck = new TASLock;
+            lck = new TASLock(lo_strong);
             break;
         case lt_ttas:
-            lck = new TTASLock;
+            lck = new TTASLock(lo_strong);
             break;
         case lt_ticket:
             lck = new TicketLock;
             break;
         case lt_mcs:
             mcs = new MCSLock;
+            break;
+        case lt_peterson:
+            peterson = new PetersonLock();
+            nthreads = 2;
+            break;
+        case lt_tasrel:
+            lck = new TASLock(lo_weak);
+            break;
+        case lt_ttasrel:
+            lck = new TTASLock(lo_weak);
+            break;
+        case lt_petersonrel:
+            petersonrel = new PetersonrelLock();
+            nthreads = 2;
+            break;
+
         default:
             break;
     }
 
+    bar_timer = new barrier(nthreads);
 
+    switch ( barriertype ) {
+    case bt_senserel:
+        bar = new SenserelBarrier(nthreads);
+        break;
+    default:
+       bar = new PThreadBarrier(nthreads);
+        break;
+    }
 
 
     /*
      * Launch threads
      */
 
+
+
     threads.push_back(0); // reserve for main thread
     for(size_t i = 1; i < nthreads; i++){
         thread *t;
         if (locktype == lt_mcs)
             t =  new thread(thread_func_mcs,i);
+        else if ( locktype == lt_peterson || locktype ==lt_petersonrel)
+            t =  new thread(thread_func_peterson, i);
         else 
+            // tas, ttas, tasrel, ttasrel
+
             t =  new thread(thread_func,i);
 
         threads.push_back(t);
 
     }
-   
-    if (locktype != lt_mcs) {
+
+
+    switch (locktype)
+    {
+    case lt_mcs:
+        thread_func_mcs(0);
+        break;
+    case lt_peterson:
+    case lt_petersonrel:
+        thread_func_peterson(0);
+        break;
+    default:
+        //tas, ttas, tasrel, ttasrel
         thread_func(0);     
-    }
+        break;
+    } 
 
 
     /*
      * Join threads
      */
     
-    for(size_t i=1; i < nthreads-1; i++) {
+    for(size_t i=1; i < nthreads; i++) {
         threads[i]->join();
+        std::cout << "Delete thread " << i << std::endl;
         delete threads[i];
     }
     threads.clear();
@@ -309,12 +382,13 @@ int main(int argc, char** argv) {
      */
 
     
-	elapsed_ns = (time_end.tv_sec-time_start.tv_sec)*1000000000 + (time_end.tv_nsec-time_start.tv_nsec);
+	elapsed_ns = (ts_end.tv_sec - ts_start.tv_sec)*1000000000 + (ts_end.tv_nsec - ts_start.tv_nsec);
 
 	printf("Time ouput\n");
 	printf("Elapsed (ns): %llu\n",elapsed_ns);
 
 	elapsed_s = ((double)elapsed_ns)/1000000000.0;
 	printf("Elapsed (s): %lf\n",elapsed_s);
+	printf("shared[0] ): %d\n",SharedData[0]);
 
 } 

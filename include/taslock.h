@@ -5,10 +5,15 @@
 #include "zlock.h"
 
 class TASLock : public ZLock {
-    std::atomic_flag flag;
+    private:
+        std::atomic_flag flag;
+        int _order;
+        void _strong_lock();
+        void _strong_unlock();
+        void _weak_lock();
+        void _weak_unlock();
     public :
-        TASLock(): flag(false) {};
-
+        TASLock(int order): flag(false), _order(order)  {};
         void lock(); 
         void unlock();
 };

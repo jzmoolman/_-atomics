@@ -12,6 +12,8 @@ int fai(std::atomic<int> &a, int amount, std::memory_order order){
 
 // Limitation of templates - should be in header file or explicit implementaiton
 
+//lock order
+
 template <typename T>
 bool cas(std::atomic<T> &a, T expected, T desired, std::memory_order order)
 {

@@ -15,7 +15,8 @@ vpath %.h include
 
 APPNAME := main
 
-CFILES := main.cpp senserelbarrier.cpp  zutils.cpp taslock.cpp ttaslock.cpp ticketlock.cpp mcslock.cpp 
+CFILES := main.cpp senserelbarrier.cpp  zutils.cpp taslock.cpp ttaslock.cpp ticketlock.cpp mcslock.cpp petersonlock.cpp petersonrellock.cpp 
+
 OBJFILES := $(CFILES:.cpp=.o)
 
 all: $(APPNAME)

@@ -6,10 +6,15 @@
 #include "zlock.h"
 
 class TTASLock : public ZLock {
-    std::atomic<bool> flag;
+    private:
+        int _order;
+        void _strong_lock();
+        void _strong_unlock();
+        void _weak_lock();
+        void _weak_unlock();
+        std::atomic<bool> flag;
     public :
-        TTASLock(): flag(false) {};
-
+        TTASLock(int order): flag(false), _order(order) {};
         void lock(); 
         void unlock();
 };
