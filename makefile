@@ -13,16 +13,24 @@ endif
 vpath %.cpp share
 vpath %.h include
 
-APPNAME := main
+APPNAME1 := counter
+APPNAME2 := mysort
 
-CFILES := main.cpp senserelbarrier.cpp  zutils.cpp taslock.cpp ttaslock.cpp ticketlock.cpp mcslock.cpp petersonlock.cpp petersonrellock.cpp 
+CFILES :=  zutils.cpp  sensebarrier.cpp  taslock.cpp ttaslock.cpp ticketlock.cpp mcslock.cpp petersonlock.cpp petersonrellock.cpp 
+CFILES1 := counter.cpp $(CFILES)
+CFILES2 := mysort.cpp bucketsort.cpp $(CFILES)
 
-OBJFILES := $(CFILES:.cpp=.o)
+OBJFILES1 := $(CFILES1:.cpp=.o)
+OBJFILES2 := $(CFILES2:.cpp=.o)
 
-all: $(APPNAME)
+all: $(APPNAME1) $(APPNAME2)
 
-$(APPNAME): $(OBJFILES) 
-	$(CC) -o $(APPNAME) $(CFLAGS) $^ 
+$(APPNAME1): $(OBJFILES1) 
+	$(CC) -o $(APPNAME1) $(CFLAGS) $^ 
+	@echo "LINK => $@"
+
+$(APPNAME2): $(OBJFILES2) 
+	$(CC) -o $(APPNAME2) $(CFLAGS) $^ 
 	@echo "LINK => $@"
 
 
